@@ -175,11 +175,9 @@ video { width: 100%; display: block; }
 </div>
 
 <div class="card" id="setup">
-  <label for="numGroup">Group Photos</label>
-  <input type="number" id="numGroup" min="0" max="20" value="3">
   <label for="duration">Session Length (minutes)</label>
   <input type="number" id="duration" min="1" max="30" value="3" step="0.5">
-  <p class="note">Detects people at start. Per person: 3 close-up photos + 3 videos (2 close-up, 1 full-body), 15s each, evenly spaced.</p>
+  <p class="note">Always takes 3 group photos (start, mid, end). Per person detected: 3 close-up photos + 3 videos (2 close-up, 1 full-body), 15s each.</p>
   <button id="startBtn">Start Camera</button>
 </div>
 
@@ -230,7 +228,7 @@ async function loadCascade() {
 setTimeout(loadCascade, 200);
 
 startBtn.addEventListener('click', async () => {
-  const numGroup = Math.max(0, parseInt(document.getElementById('numGroup').value) || 0);
+  const numGroup = 3;
   const minutes = Math.max(0.5, parseFloat(document.getElementById('duration').value) || 3);
   const totalDuration = minutes * 60 * 1000;
   if (!cascadeReady) await loadCascade();
@@ -286,12 +284,15 @@ function beginSession(numGroup, totalDuration, minutes) {
   schedule = [];
   videoClips = [];
 
-  if (numGroup > 0) {
-    for (let i = 0; i < numGroup; i++) {
-      const t = ((i + 0.5) / numGroup) * (totalDuration - 2000) + 1000;
-      schedule.push({ t, type: 'group', faceIndex: -1 });
-    }
-  }
+  // Always 3 group photos: near start, midpoint, near end
+  const groupTimes = [
+    totalDuration * 0.05,
+    totalDuration * 0.50,
+    totalDuration * 0.92
+  ];
+  groupTimes.forEach(t => {
+    schedule.push({ t, type: 'group', faceIndex: -1 });
+  });
 
   if (numPeople > 0) {
     for (let p = 0; p < numPeople; p++) {
@@ -332,7 +333,7 @@ function beginSession(numGroup, totalDuration, minutes) {
 
   const totalCloseups = numPeople * 3;
   const totalVideos = numPeople * 3;
-  statusEl.textContent = `${numGroup} group · ${totalCloseups} close-ups · ${totalVideos} videos`;
+  statusEl.textContent = `3 group · ${totalCloseups} close-ups · ${totalVideos} videos`;
 
   schedule.forEach((item, idx) => {
     if (item.type === 'video') {
