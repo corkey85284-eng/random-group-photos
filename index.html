@@ -65,21 +65,50 @@ let faceModel = null;
 let modelLoading = false;
 let sessionParams = null;
 
-async function loadFaceModel() {
-  if (faceModel || modelLoading) return;
+async function ensureTfReady() {
+  if (typeof tf === 'undefined' || typeof blazeface === 'undefined') {
+    await new Promise(r => setTimeout(r, 800));
+  }
+  if (typeof tf === 'undefined') throw new Error('TensorFlow.js not loaded');
+  if (typeof blazeface === 'undefined') throw new Error('BlazeFace not loaded');
+  try {
+    await tf.ready();
+    const backend = tf.getBackend();
+    if (!backend) {
+      await tf.setBackend('webgl').catch(() => tf.setBackend('cpu'));
+      await tf.ready();
+    }
+  } catch (e) {
+    console.warn('Backend setup issue', e);
+  }
+}
+
+async function loadFaceModel(retries = 3) {
+  if (faceModel) return;
+  if (modelLoading) {
+    await new Promise(r => setTimeout(r, 500));
+    return loadFaceModel(retries);
+  }
   modelLoading = true;
   try {
     statusEl.textContent = 'Loading face detection...';
+    await ensureTfReady();
     faceModel = await blazeface.load();
     statusEl.textContent = 'Face detection ready';
   } catch (e) {
-    console.error('Face model failed to load', e);
+    console.error('Face model load attempt failed', e);
+    if (retries > 0) {
+      modelLoading = false;
+      statusEl.textContent = 'Retrying face detection...';
+      await new Promise(r => setTimeout(r, 1000));
+      return loadFaceModel(retries - 1);
+    }
     statusEl.textContent = 'Face detection unavailable (continuing without it)';
   }
   modelLoading = false;
 }
 
-loadFaceModel();
+setTimeout(() => loadFaceModel(), 300);
 
 startBtn.addEventListener('click', async () => {
   const numGroup = Math.max(0, parseInt(document.getElementById('numGroup').value) || 0);
@@ -102,7 +131,9 @@ startBtn.addEventListener('click', async () => {
     videoContainer.style.display = 'block';
     startTimerBtn.style.display = 'block';
     completeBanner.style.display = 'none';
-    statusEl.textContent = 'Camera ready — tap Start Timer when everyone is set';
+    statusEl.textContent = faceModel
+      ? 'Camera ready — tap Start Timer when everyone is set'
+      : 'Camera ready (face detection off) — tap Start Timer';
     sessionParams = { numGroup, numIndividual, totalDuration, minutes };
   } catch (err) {
     statusEl.textContent = 'Camera permission denied or unavailable';
