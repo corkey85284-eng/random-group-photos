@@ -23,6 +23,7 @@ video { width: 100%; display: block; }
 #gallery { width: 100%; max-width: 400px; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
 #gallery img { width: 100%; border-radius: 8px; }
 .download-btn { background: #34c759; margin-top: 8px; font-size: 0.9rem; padding: 10px; display: block; text-align: center; text-decoration: none; color: #fff; border-radius: 8px; }
+#startTimerBtn { display: none; width: 100%; max-width: 400px; margin: 10px 0; background: #ff9500; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.1.0/dist/blazeface.min.js"></script>
@@ -42,12 +43,14 @@ video { width: 100%; display: block; }
   <div id="countdown"></div>
   <video id="video" autoplay playsinline muted></video>
 </div>
+<button id="startTimerBtn">Start Timer</button>
 <div id="status"></div>
 <div id="complete-banner">Session Complete! Downloading photos...</div>
 <div id="gallery"></div>
 <script>
 const video = document.getElementById('video');
 const startBtn = document.getElementById('startBtn');
+const startTimerBtn = document.getElementById('startTimerBtn');
 const statusEl = document.getElementById('status');
 const gallery = document.getElementById('gallery');
 const setup = document.getElementById('setup');
@@ -60,6 +63,7 @@ let schedule = [];
 let timeouts = [];
 let faceModel = null;
 let modelLoading = false;
+let sessionParams = null;
 
 async function loadFaceModel() {
   if (faceModel || modelLoading) return;
@@ -96,13 +100,21 @@ startBtn.addEventListener('click', async () => {
     video.srcObject = stream;
     setup.style.display = 'none';
     videoContainer.style.display = 'block';
+    startTimerBtn.style.display = 'block';
     completeBanner.style.display = 'none';
-    statusEl.textContent = 'Get ready...';
-    startCountdown(15, () => beginSession(numGroup, numIndividual, totalDuration, minutes));
+    statusEl.textContent = 'Camera ready — tap Start Timer when everyone is set';
+    sessionParams = { numGroup, numIndividual, totalDuration, minutes };
   } catch (err) {
     statusEl.textContent = 'Camera permission denied or unavailable';
     console.error(err);
   }
+});
+
+startTimerBtn.addEventListener('click', () => {
+  if (!sessionParams) return;
+  startTimerBtn.style.display = 'none';
+  statusEl.textContent = 'Get ready...';
+  startCountdown(15, () => beginSession(sessionParams.numGroup, sessionParams.numIndividual, sessionParams.totalDuration, sessionParams.minutes));
 });
 
 function startCountdown(seconds, onDone) {
@@ -250,6 +262,7 @@ function endSession() {
   completeBanner.style.display = 'block';
   videoContainer.style.display = 'none';
   video.srcObject = null;
+  startTimerBtn.style.display = 'none';
 
   photos.forEach((p, i) => {
     const filename = `${p.type}-${i+1}.jpg`;
