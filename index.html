@@ -124,6 +124,7 @@ function takePhoto(type, n) {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
   let sx = 0, sy = 0, sw = vw, sh = vh;
+
   if (type === 'individual') {
     const zoom = 2.2;
     sw = vw / zoom;
@@ -131,11 +132,24 @@ function takePhoto(type, n) {
     sx = Math.random() * (vw - sw);
     sy = Math.random() * (vh - sh);
   }
-  canvas.width = type === 'individual' ? 800 : 1200;
-  canvas.height = type === 'individual' ? 800 : 900;
+
+  // Preserve aspect ratio — no stretching
+  const aspect = sw / sh;
+  let outW, outH;
+  if (type === 'individual') {
+    outH = 900;
+    outW = Math.round(outH * aspect);
+  } else {
+    outW = 1400;
+    outH = Math.round(outW / aspect);
+  }
+
+  canvas.width = outW;
+  canvas.height = outH;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
   photos.push({ url: dataUrl, type });
   const img = document.createElement('img');
   img.src = dataUrl;
