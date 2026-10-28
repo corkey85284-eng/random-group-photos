@@ -17,7 +17,9 @@ button { width: 100%; padding: 16px; margin-top: 16px; border: none; border-radi
 button:disabled { background: #444; }
 #video-container { width: 100%; max-width: 400px; position: relative; border-radius: 16px; overflow: hidden; background: #000; margin-bottom: 20px; }
 video { width: 100%; display: block; }
-#status { text-align: center; margin: 10px 0; font-size: 0.95rem; color: #0f0; min-height: 1.2em; }
+#status { text-align: center; margin: 10px 0; font-size: 1.1rem; color: #0f0; min-height: 1.4em; font-weight: 600; }
+#countdown { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 6rem; font-weight: 700; color: #fff; text-shadow: 0 0 20px #000; z-index: 10; pointer-events: none; }
+#complete-banner { display: none; width: 100%; max-width: 400px; background: #34c759; color: #000; text-align: center; padding: 20px; border-radius: 16px; font-size: 1.3rem; font-weight: 700; margin: 10px 0; }
 #gallery { width: 100%; max-width: 400px; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
 #gallery img { width: 100%; border-radius: 8px; }
 .download-btn { background: #34c759; margin-top: 8px; font-size: 0.9rem; padding: 10px; display: block; text-align: center; text-decoration: none; color: #fff; border-radius: 8px; }
@@ -35,9 +37,11 @@ video { width: 100%; display: block; }
   <button id="startBtn">Start Camera</button>
 </div>
 <div id="video-container" style="display:none;">
+  <div id="countdown"></div>
   <video id="video" autoplay playsinline muted></video>
 </div>
 <div id="status"></div>
+<div id="complete-banner">Session Complete!</div>
 <div id="gallery"></div>
 <script>
 const video = document.getElementById('video');
@@ -46,6 +50,8 @@ const statusEl = document.getElementById('status');
 const gallery = document.getElementById('gallery');
 const setup = document.getElementById('setup');
 const videoContainer = document.getElementById('video-container');
+const countdownEl = document.getElementById('countdown');
+const completeBanner = document.getElementById('complete-banner');
 let stream = null;
 let photos = [];
 let schedule = [];
@@ -68,13 +74,31 @@ startBtn.addEventListener('click', async () => {
     video.srcObject = stream;
     setup.style.display = 'none';
     videoContainer.style.display = 'block';
-    statusEl.textContent = 'Get ready... starting soon';
-    setTimeout(() => beginSession(numGroup, numIndividual, totalDuration), 2000);
+    completeBanner.style.display = 'none';
+    statusEl.textContent = 'Get ready...';
+    startCountdown(10, () => beginSession(numGroup, numIndividual, totalDuration));
   } catch (err) {
     statusEl.textContent = 'Camera permission denied or unavailable';
     console.error(err);
   }
 });
+
+function startCountdown(seconds, onDone) {
+  let remaining = seconds;
+  countdownEl.textContent = remaining;
+  countdownEl.style.display = 'block';
+  const interval = setInterval(() => {
+    remaining--;
+    if (remaining <= 0) {
+      clearInterval(interval);
+      countdownEl.style.display = 'none';
+      statusEl.textContent = 'Starting now!';
+      onDone();
+    } else {
+      countdownEl.textContent = remaining;
+    }
+  }, 1000);
+}
 
 function beginSession(numGroup, numIndividual, totalDuration) {
   const totalShots = numGroup + numIndividual;
@@ -87,7 +111,7 @@ function beginSession(numGroup, numIndividual, totalDuration) {
   schedule.sort((a, b) => a.t - b.t);
   photos = [];
   gallery.innerHTML = '';
-  statusEl.textContent = `Session started — ${numGroup} group + ${numIndividual} close-ups over ${totalDuration/1000}s`;
+  statusEl.textContent = `Session running — ${numGroup} group + ${numIndividual} close-ups over ${totalDuration/1000}s`;
   schedule.forEach((item, idx) => {
     const to = setTimeout(() => takePhoto(item.type, idx + 1), item.t);
     timeouts.push(to);
@@ -125,7 +149,9 @@ function takePhoto(type, n) {
 function endSession() {
   timeouts.forEach(clearTimeout);
   if (stream) stream.getTracks().forEach(t => t.stop());
-  statusEl.textContent = `Done! ${photos.length} photos captured`;
+  statusEl.textContent = 'All photos captured';
+  statusEl.style.color = '#34c759';
+  completeBanner.style.display = 'block';
   videoContainer.style.display = 'none';
   photos.forEach((p, i) => {
     const a = document.createElement('a');
