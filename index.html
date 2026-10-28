@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Random Group Photos</title>
+<meta name="theme-color" content="#1a1a1a">
+<link rel="manifest" href="manifest.json">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #111; color: #fff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+h1 { font-size: 1.4rem; margin-bottom: 20px; font-weight: 500; }
+.controls { width: 100%; max-width: 400px; background: #1e1e1e; border-radius: 16px; padding: 20px; margin-bottom: 20px; }
+label { display: block; margin: 12px 0 6px; font-size: 0.9rem; color: #aaa; }
+input[type="number"] { width: 100%; padding: 12px; border-radius: 10px; border: none; background: #2a2a2a; color: #fff; font-size: 1rem; }
+button { width: 100%; padding: 16px; margin-top: 16px; border: none; border-radius: 12px; background: #007aff; color: #fff; font-size: 1.1rem; font-weight: 600; cursor: pointer; }
+button:disabled { background: #444; }
+#video-container { width: 100%; max-width: 400px; position: relative; border-radius: 16px; overflow: hidden; background: #000; margin-bottom: 20px; }
+video { width: 100%; display: block; }
+#status { text-align: center; margin: 10px 0; font-size: 0.95rem; color: #0f0; min-height: 1.2em; }
+#gallery { width: 100%; max-width: 400px; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
+#gallery img { width: 100%; border-radius: 8px; }
+.download-btn { background: #34c759; margin-top: 8px; font-size: 0.9rem; padding: 10px; }
+</style>
+</head>
+<body>
+<h1>Random Group Photos</h1>
+<div class="controls" id="setup">
+  <label for="numPhotos">Number of photos</label>
+  <input type="number" id="numPhotos" min="1" max="30" value="5">
+  <label for="duration">Total time (seconds)</label>
+  <input type="number" id="duration" min="5" max="300" value="30">
+  <button id="startBtn">Start Camera</button>
+</div>
+<div id="video-container" style="display:none;">
+  <video id="video" autoplay playsinline muted></video>
+</div>
+<div id="status"></div>
+<div id="gallery"></div>
+<script>
+const video = document.getElementById('video');
+const startBtn = document.getElementById('startBtn');
+const statusEl = document.getElementById('status');
+const gallery = document.getElementById('gallery');
+const setup = document.getElementById('setup');
+const videoContainer = document.getElementById('video-container');
+let stream = null;
+let photos = [];
+let captureTimes = [];
+let sessionStart = 0;
+let totalDuration = 0;
+let numPhotos = 0;
+let captured = 0;
+let timeouts = [];
+
+startBtn.addEventListener('click', async () => {
+  numPhotos = parseInt(document.getElementById('numPhotos').value) || 5;
+  totalDuration = (parseInt(document.getElementById('duration').value) || 30) * 1000;
+  if (numPhotos < 1) numPhotos = 1;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    setup.style.display = 'none';
+    videoContainer.style.display = 'block';
+    statusEl.textContent = 'Get ready... starting soon';
+    setTimeout(beginSession, 2000);
+  } catch (err) {
+    statusEl.textContent = 'Camera permission denied or unavailable';
+    console.error(err);
+  }
+});
+
+function beginSession() {
+  // Generate random times between 1s and totalDuration-1s
+  captureTimes = [];
+  for (let i = 0; i < numPhotos; i++) {
+    const t = Math.random() * (totalDuration - 2000) + 1000;
+    captureTimes.push(t);
+  }
+  captureTimes.sort((a, b) => a - b);
+  sessionStart = Date.now();
+  captured = 0;
+  photos = [];
+  gallery.innerHTML = '';
+  statusEl.textContent = `Session started — ${numPhotos} photos over ${totalDuration/1000}s`;
+  captureTimes.forEach((t, idx) => {
+    const to = setTimeout(() => takePhoto(idx + 1), t);
+    timeouts.push(to);
+  });
+  // End session
+  setTimeout(endSession, totalDuration);
+}
+
+function takePhoto(n) {
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+  photos.push(dataUrl);
+  captured++;
+  const img = document.createElement('img');
+  img.src = dataUrl;
+  gallery.appendChild(img);
+  statusEl.textContent = `Photo ${captured}/${numPhotos} captured`;
+  // Flash effect
+  video.style.filter = 'brightness(2)';
+  setTimeout(() => video.style.filter = '', 100);
+}
+
+function endSession() {
+  timeouts.forEach(clearTimeout);
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  statusEl.textContent = `Done! ${photos.length} photos captured`;
+  videoContainer.style.display = 'none';
+  // Add download buttons
+  photos.forEach((url, i) => {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `photo-${i+1}.jpg`;
+    a.textContent = `Download ${i+1}`;
+    a.className = 'download-btn';
+    a.style.display = 'block';
+    a.style.textAlign = 'center';
+    a.style.textDecoration = 'none';
+    a.style.color = '#fff';
+    a.style.borderRadius = '8px';
+    gallery.parentNode.appendChild(a);
+  });
+  const again = document.createElement('button');
+  again.textContent = 'New Session';
+  again.onclick = () => location.reload();
+  again.style.marginTop = '20px';
+  document.body.appendChild(again);
+}
+</script>
+</body>
+</html>
