@@ -25,8 +25,7 @@ video { width: 100%; display: block; }
 .download-btn { background: #34c759; margin-top: 8px; font-size: 0.9rem; padding: 10px; display: block; text-align: center; text-decoration: none; color: #fff; border-radius: 8px; }
 #startTimerBtn { display: none; width: 100%; max-width: 400px; margin: 10px 0; background: #ff9500; }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.1.0/dist/blazeface.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/nenadmarkus/picojs@master/pico.js"></script>
 </head>
 <body>
 <h1>Random Group & Close-ups</h1>
@@ -61,54 +60,27 @@ let stream = null;
 let photos = [];
 let schedule = [];
 let timeouts = [];
-let faceModel = null;
-let modelLoading = false;
+let facefinder_classify_region = function() { return -1.0; };
+let cascadeReady = false;
 let sessionParams = null;
 
-async function ensureTfReady() {
-  if (typeof tf === 'undefined' || typeof blazeface === 'undefined') {
-    await new Promise(r => setTimeout(r, 800));
-  }
-  if (typeof tf === 'undefined') throw new Error('TensorFlow.js not loaded');
-  if (typeof blazeface === 'undefined') throw new Error('BlazeFace not loaded');
-  try {
-    await tf.ready();
-    const backend = tf.getBackend();
-    if (!backend) {
-      await tf.setBackend('webgl').catch(() => tf.setBackend('cpu'));
-      await tf.ready();
-    }
-  } catch (e) {
-    console.warn('Backend setup issue', e);
-  }
-}
-
-async function loadFaceModel(retries = 3) {
-  if (faceModel) return;
-  if (modelLoading) {
-    await new Promise(r => setTimeout(r, 500));
-    return loadFaceModel(retries);
-  }
-  modelLoading = true;
+async function loadCascade() {
+  if (cascadeReady) return;
   try {
     statusEl.textContent = 'Loading face detection...';
-    await ensureTfReady();
-    faceModel = await blazeface.load();
+    const response = await fetch('https://raw.githubusercontent.com/nenadmarkus/pico/master/rnt/cascades/facefinder');
+    const buffer = await response.arrayBuffer();
+    const bytes = new Int8Array(buffer);
+    facefinder_classify_region = pico.unpack_cascade(bytes);
+    cascadeReady = true;
     statusEl.textContent = 'Face detection ready';
   } catch (e) {
-    console.error('Face model load attempt failed', e);
-    if (retries > 0) {
-      modelLoading = false;
-      statusEl.textContent = 'Retrying face detection...';
-      await new Promise(r => setTimeout(r, 1000));
-      return loadFaceModel(retries - 1);
-    }
+    console.error('Cascade load failed', e);
     statusEl.textContent = 'Face detection unavailable (continuing without it)';
   }
-  modelLoading = false;
 }
 
-setTimeout(() => loadFaceModel(), 300);
+setTimeout(loadCascade, 200);
 
 startBtn.addEventListener('click', async () => {
   const numGroup = Math.max(0, parseInt(document.getElementById('numGroup').value) || 0);
@@ -120,7 +92,7 @@ startBtn.addEventListener('click', async () => {
     statusEl.textContent = 'Choose at least one photo';
     return;
   }
-  if (!faceModel) await loadFaceModel();
+  if (!cascadeReady) await loadCascade();
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -131,7 +103,7 @@ startBtn.addEventListener('click', async () => {
     videoContainer.style.display = 'block';
     startTimerBtn.style.display = 'block';
     completeBanner.style.display = 'none';
-    statusEl.textContent = faceModel
+    statusEl.textContent = cascadeReady
       ? 'Camera ready — tap Start Timer when everyone is set'
       : 'Camera ready (face detection off) — tap Start Timer';
     sessionParams = { numGroup, numIndividual, totalDuration, minutes };
@@ -184,34 +156,50 @@ function beginSession(numGroup, numIndividual, totalDuration, minutes) {
   setTimeout(endSession, totalDuration);
 }
 
-async function detectBestFace(vw, vh) {
-  if (!faceModel) return null;
+function rgba_to_grayscale(rgba, nrows, ncols) {
+  const gray = new Uint8Array(nrows * ncols);
+  for (let r = 0; r < nrows; ++r) {
+    for (let c = 0; c < ncols; ++c) {
+      const i = (r * ncols + c) * 4;
+      gray[r * ncols + c] = (2 * rgba[i] + 7 * rgba[i + 1] + 1 * rgba[i + 2]) / 10;
+    }
+  }
+  return gray;
+}
+
+function detectBestFace() {
+  if (!cascadeReady || !video.videoWidth) return null;
   try {
-    const predictions = await faceModel.estimateFaces(video, false);
-    if (!predictions || predictions.length === 0) return null;
-    let best = predictions[0];
-    let bestArea = 0;
-    for (const p of predictions) {
-      const [x1, y1] = p.topLeft;
-      const [x2, y2] = p.bottomRight;
-      const area = (x2 - x1) * (y2 - y1);
-      if (area > bestArea) {
-        bestArea = area;
-        best = p;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    const tmp = document.createElement('canvas');
+    tmp.width = Math.min(vw, 640);
+    tmp.height = Math.round(tmp.width * (vh / vw));
+    const ctx = tmp.getContext('2d');
+    ctx.drawImage(video, 0, 0, tmp.width, tmp.height);
+    const imageData = ctx.getImageData(0, 0, tmp.width, tmp.height);
+    const gray = rgba_to_grayscale(imageData.data, tmp.height, tmp.width);
+    const image = { pixels: gray, nrows: tmp.height, ncols: tmp.width, ldim: tmp.width };
+    const params = { shiftfactor: 0.1, minsize: 30, maxsize: 800, scalefactor: 1.1 };
+    let dets = pico.run_cascade(image, facefinder_classify_region, params);
+    dets = pico.cluster_detections(dets, 0.2);
+    const qthresh = 5.0;
+    let best = null;
+    let bestScore = qthresh;
+    for (const d of dets) {
+      if (d[3] > bestScore) {
+        bestScore = d[3];
+        const scaleX = vw / tmp.width;
+        const scaleY = vh / tmp.height;
+        const cx = d[1] * scaleX;
+        const cy = d[0] * scaleY;
+        const size = d[2] * Math.max(scaleX, scaleY);
+        best = { cx, cy, width: size, height: size };
       }
     }
-    const [x1, y1] = best.topLeft;
-    const [x2, y2] = best.bottomRight;
-    return {
-      x: x1,
-      y: y1,
-      width: x2 - x1,
-      height: y2 - y1,
-      cx: (x1 + x2) / 2,
-      cy: (y1 + y2) / 2
-    };
+    return best;
   } catch (e) {
-    console.warn('Face detection error', e);
+    console.warn('pico detection error', e);
     return null;
   }
 }
@@ -225,12 +213,12 @@ async function takePhoto(type, n) {
   statusEl.textContent = `Capturing ${n}...`;
 
   if (type === 'individual') {
-    const face = await detectBestFace(vw, vh);
+    const face = detectBestFace();
     const zoom = 2.0;
     if (face) {
-      const pad = 1.6;
-      sw = Math.min(vw, face.width * pad * zoom);
-      sh = Math.min(vh, face.height * pad * zoom);
+      const pad = 1.8;
+      sw = Math.min(vw, face.width * pad);
+      sh = Math.min(vh, face.height * pad);
       const aspect = vw / vh;
       if (sw / sh > aspect) sh = sw / aspect;
       else sw = sh * aspect;
