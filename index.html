@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Random Group Photos</title>
+<title>Random Group & Close-ups</title>
 <meta name="theme-color" content="#1a1a1a">
 <link rel="manifest" href="manifest.json">
 <style>
@@ -20,16 +20,18 @@ video { width: 100%; display: block; }
 #status { text-align: center; margin: 10px 0; font-size: 0.95rem; color: #0f0; min-height: 1.2em; }
 #gallery { width: 100%; max-width: 400px; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
 #gallery img { width: 100%; border-radius: 8px; }
-.download-btn { background: #34c759; margin-top: 8px; font-size: 0.9rem; padding: 10px; }
+.download-btn { background: #34c759; margin-top: 8px; font-size: 0.9rem; padding: 10px; display: block; text-align: center; text-decoration: none; color: #fff; border-radius: 8px; }
 </style>
 </head>
 <body>
-<h1>Random Group Photos</h1>
+<h1>Random Group & Close-ups</h1>
 <div class="controls" id="setup">
-  <label for="numPhotos">Number of photos</label>
-  <input type="number" id="numPhotos" min="1" max="30" value="5">
+  <label for="numGroup">Group photos (full view)</label>
+  <input type="number" id="numGroup" min="0" max="20" value="3">
+  <label for="numIndividual">Individual close-ups</label>
+  <input type="number" id="numIndividual" min="0" max="20" value="4">
   <label for="duration">Total time (seconds)</label>
-  <input type="number" id="duration" min="5" max="300" value="30">
+  <input type="number" id="duration" min="5" max="300" value="40">
   <button id="startBtn">Start Camera</button>
 </div>
 <div id="video-container" style="display:none;">
@@ -46,17 +48,18 @@ const setup = document.getElementById('setup');
 const videoContainer = document.getElementById('video-container');
 let stream = null;
 let photos = [];
-let captureTimes = [];
-let sessionStart = 0;
-let totalDuration = 0;
-let numPhotos = 0;
-let captured = 0;
+let schedule = [];
 let timeouts = [];
 
 startBtn.addEventListener('click', async () => {
-  numPhotos = parseInt(document.getElementById('numPhotos').value) || 5;
-  totalDuration = (parseInt(document.getElementById('duration').value) || 30) * 1000;
-  if (numPhotos < 1) numPhotos = 1;
+  const numGroup = Math.max(0, parseInt(document.getElementById('numGroup').value) || 0);
+  const numIndividual = Math.max(0, parseInt(document.getElementById('numIndividual').value) || 0);
+  const totalDuration = (Math.max(5, parseInt(document.getElementById('duration').value) || 30)) * 1000;
+  const totalShots = numGroup + numIndividual;
+  if (totalShots < 1) {
+    statusEl.textContent = 'Choose at least one photo';
+    return;
+  }
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -66,50 +69,57 @@ startBtn.addEventListener('click', async () => {
     setup.style.display = 'none';
     videoContainer.style.display = 'block';
     statusEl.textContent = 'Get ready... starting soon';
-    setTimeout(beginSession, 2000);
+    setTimeout(() => beginSession(numGroup, numIndividual, totalDuration), 2000);
   } catch (err) {
     statusEl.textContent = 'Camera permission denied or unavailable';
     console.error(err);
   }
 });
 
-function beginSession() {
-  // Generate random times between 1s and totalDuration-1s
-  captureTimes = [];
-  for (let i = 0; i < numPhotos; i++) {
+function beginSession(numGroup, numIndividual, totalDuration) {
+  const totalShots = numGroup + numIndividual;
+  schedule = [];
+  for (let i = 0; i < totalShots; i++) {
     const t = Math.random() * (totalDuration - 2000) + 1000;
-    captureTimes.push(t);
+    const isGroup = i < numGroup;
+    schedule.push({ t, type: isGroup ? 'group' : 'individual' });
   }
-  captureTimes.sort((a, b) => a - b);
-  sessionStart = Date.now();
-  captured = 0;
+  schedule.sort((a, b) => a.t - b.t);
   photos = [];
   gallery.innerHTML = '';
-  statusEl.textContent = `Session started — ${numPhotos} photos over ${totalDuration/1000}s`;
-  captureTimes.forEach((t, idx) => {
-    const to = setTimeout(() => takePhoto(idx + 1), t);
+  statusEl.textContent = `Session started — ${numGroup} group + ${numIndividual} close-ups over ${totalDuration/1000}s`;
+  schedule.forEach((item, idx) => {
+    const to = setTimeout(() => takePhoto(item.type, idx + 1), item.t);
     timeouts.push(to);
   });
-  // End session
   setTimeout(endSession, totalDuration);
 }
 
-function takePhoto(n) {
+function takePhoto(type, n) {
   const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  let sx = 0, sy = 0, sw = vw, sh = vh;
+  if (type === 'individual') {
+    const zoom = 2.2;
+    sw = vw / zoom;
+    sh = vh / zoom;
+    sx = Math.random() * (vw - sw);
+    sy = Math.random() * (vh - sh);
+  }
+  canvas.width = type === 'individual' ? 800 : 1200;
+  canvas.height = type === 'individual' ? 800 : 900;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0);
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-  photos.push(dataUrl);
-  captured++;
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+  photos.push({ url: dataUrl, type });
   const img = document.createElement('img');
   img.src = dataUrl;
+  img.title = type === 'group' ? 'Group' : 'Close-up';
   gallery.appendChild(img);
-  statusEl.textContent = `Photo ${captured}/${numPhotos} captured`;
-  // Flash effect
+  statusEl.textContent = `Captured ${n}: ${type === 'group' ? 'group' : 'close-up'}`;
   video.style.filter = 'brightness(2)';
-  setTimeout(() => video.style.filter = '', 100);
+  setTimeout(() => video.style.filter = '', 120);
 }
 
 function endSession() {
@@ -117,18 +127,12 @@ function endSession() {
   if (stream) stream.getTracks().forEach(t => t.stop());
   statusEl.textContent = `Done! ${photos.length} photos captured`;
   videoContainer.style.display = 'none';
-  // Add download buttons
-  photos.forEach((url, i) => {
+  photos.forEach((p, i) => {
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `photo-${i+1}.jpg`;
-    a.textContent = `Download ${i+1}`;
+    a.href = p.url;
+    a.download = `${p.type}-${i+1}.jpg`;
+    a.textContent = `Download ${p.type} ${i+1}`;
     a.className = 'download-btn';
-    a.style.display = 'block';
-    a.style.textAlign = 'center';
-    a.style.textDecoration = 'none';
-    a.style.color = '#fff';
-    a.style.borderRadius = '8px';
     gallery.parentNode.appendChild(a);
   });
   const again = document.createElement('button');
