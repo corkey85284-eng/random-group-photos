@@ -41,7 +41,7 @@ video { width: 100%; display: block; }
   <video id="video" autoplay playsinline muted></video>
 </div>
 <div id="status"></div>
-<div id="complete-banner">Session Complete!</div>
+<div id="complete-banner">Session Complete! Saving photos...</div>
 <div id="gallery"></div>
 <script>
 const video = document.getElementById('video');
@@ -146,21 +146,46 @@ function takePhoto(type, n) {
   setTimeout(() => video.style.filter = '', 120);
 }
 
+async function savePhoto(dataUrl, filename) {
+  try {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const file = new File([blob], filename, { type: 'image/jpeg' });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: filename });
+      return true;
+    }
+  } catch (e) {
+    console.log('Share failed, falling back to download', e);
+  }
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  return false;
+}
+
 function endSession() {
   timeouts.forEach(clearTimeout);
   if (stream) stream.getTracks().forEach(t => t.stop());
-  statusEl.textContent = 'All photos captured';
+  statusEl.textContent = 'All photos captured — saving...';
   statusEl.style.color = '#34c759';
   completeBanner.style.display = 'block';
   videoContainer.style.display = 'none';
+
   photos.forEach((p, i) => {
+    const filename = `${p.type}-${i+1}.jpg`;
+    setTimeout(() => savePhoto(p.url, filename), i * 800);
     const a = document.createElement('a');
     a.href = p.url;
-    a.download = `${p.type}-${i+1}.jpg`;
-    a.textContent = `Download ${p.type} ${i+1}`;
+    a.download = filename;
+    a.textContent = `Save ${p.type} ${i+1}`;
     a.className = 'download-btn';
     gallery.parentNode.appendChild(a);
   });
+
   const again = document.createElement('button');
   again.textContent = 'New Session';
   again.onclick = () => location.reload();
