@@ -32,10 +32,9 @@ video { width: 100%; display: block; }
 <div class="controls" id="setup">
   <label for="numGroup">Group photos (full view)</label>
   <input type="number" id="numGroup" min="0" max="20" value="3">
-  <label for="numIndividual">Individual close-ups</label>
-  <input type="number" id="numIndividual" min="0" max="20" value="4">
   <label for="duration">Total time (minutes)</label>
   <input type="number" id="duration" min="1" max="30" value="2" step="0.5">
+  <p style="font-size:0.85rem;color:#aaa;margin-top:8px;">Close-ups: 3 per detected person, spaced evenly</p>
   <button id="startBtn">Start Camera</button>
 </div>
 <div id="video-container" style="display:none;">
@@ -63,6 +62,7 @@ let timeouts = [];
 let facefinder_classify_region = function() { return -1.0; };
 let cascadeReady = false;
 let sessionParams = null;
+let trackedFaces = [];
 
 async function loadCascade() {
   if (cascadeReady) return;
@@ -84,12 +84,10 @@ setTimeout(loadCascade, 200);
 
 startBtn.addEventListener('click', async () => {
   const numGroup = Math.max(0, parseInt(document.getElementById('numGroup').value) || 0);
-  const numIndividual = Math.max(0, parseInt(document.getElementById('numIndividual').value) || 0);
   const minutes = Math.max(0.5, parseFloat(document.getElementById('duration').value) || 2);
   const totalDuration = minutes * 60 * 1000;
-  const totalShots = numGroup + numIndividual;
-  if (totalShots < 1) {
-    statusEl.textContent = 'Choose at least one photo';
+  if (numGroup < 0) {
+    statusEl.textContent = 'Invalid group count';
     return;
   }
   if (!cascadeReady) await loadCascade();
@@ -106,7 +104,7 @@ startBtn.addEventListener('click', async () => {
     statusEl.textContent = cascadeReady
       ? 'Camera ready — tap Start Timer when everyone is set'
       : 'Camera ready (face detection off) — tap Start Timer';
-    sessionParams = { numGroup, numIndividual, totalDuration, minutes };
+    sessionParams = { numGroup, totalDuration, minutes };
   } catch (err) {
     statusEl.textContent = 'Camera permission denied or unavailable';
     console.error(err);
@@ -117,7 +115,7 @@ startTimerBtn.addEventListener('click', () => {
   if (!sessionParams) return;
   startTimerBtn.style.display = 'none';
   statusEl.textContent = 'Get ready...';
-  startCountdown(15, () => beginSession(sessionParams.numGroup, sessionParams.numIndividual, sessionParams.totalDuration, sessionParams.minutes));
+  startCountdown(15, () => beginSession(sessionParams.numGroup, sessionParams.totalDuration, sessionParams.minutes));
 });
 
 function startCountdown(seconds, onDone) {
@@ -137,20 +135,42 @@ function startCountdown(seconds, onDone) {
   }, 1000);
 }
 
-function beginSession(numGroup, numIndividual, totalDuration, minutes) {
-  const totalShots = numGroup + numIndividual;
+function beginSession(numGroup, totalDuration, minutes) {
+  trackedFaces = detectAllFaces();
+  const numPeople = trackedFaces.length;
+  statusEl.textContent = numPeople > 0
+    ? `Detected ${numPeople} person${numPeople>1?'s':''} — scheduling 3 close-ups each`
+    : 'No faces detected — group photos only';
+
   schedule = [];
-  for (let i = 0; i < totalShots; i++) {
-    const t = Math.random() * (totalDuration - 2000) + 1000;
-    const isGroup = i < numGroup;
-    schedule.push({ t, type: isGroup ? 'group' : 'individual' });
+
+  if (numGroup > 0) {
+    for (let i = 0; i < numGroup; i++) {
+      const t = ((i + 0.5) / numGroup) * (totalDuration - 2000) + 1000;
+      schedule.push({ t, type: 'group', faceIndex: -1 });
+    }
   }
+
+  if (numPeople > 0) {
+    for (let p = 0; p < numPeople; p++) {
+      for (let shot = 0; shot < 3; shot++) {
+        const base = (shot + 0.5) / 3;
+        const offset = (p * 0.15) % 0.3;
+        const t = (base + offset) * (totalDuration - 3000) + 1500;
+        schedule.push({ t, type: 'individual', faceIndex: p });
+      }
+    }
+  }
+
   schedule.sort((a, b) => a.t - b.t);
   photos = [];
   gallery.innerHTML = '';
-  statusEl.textContent = `Session running — ${numGroup} group + ${numIndividual} close-ups over ${minutes} min`;
+
+  const totalCloseups = numPeople * 3;
+  statusEl.textContent = `Session running — ${numGroup} group + ${totalCloseups} close-ups over ${minutes} min`;
+
   schedule.forEach((item, idx) => {
-    const to = setTimeout(() => takePhoto(item.type, idx + 1), item.t);
+    const to = setTimeout(() => takePhoto(item.type, item.faceIndex, idx + 1), item.t);
     timeouts.push(to);
   });
   setTimeout(endSession, totalDuration);
@@ -167,8 +187,8 @@ function rgba_to_grayscale(rgba, nrows, ncols) {
   return gray;
 }
 
-function detectBestFace() {
-  if (!cascadeReady || !video.videoWidth) return null;
+function detectAllFaces() {
+  if (!cascadeReady || !video.videoWidth) return [];
   try {
     const vw = video.videoWidth;
     const vh = video.videoHeight;
@@ -184,27 +204,26 @@ function detectBestFace() {
     let dets = pico.run_cascade(image, facefinder_classify_region, params);
     dets = pico.cluster_detections(dets, 0.2);
     const qthresh = 5.0;
-    let best = null;
-    let bestScore = qthresh;
+    const faces = [];
     for (const d of dets) {
-      if (d[3] > bestScore) {
-        bestScore = d[3];
+      if (d[3] > qthresh) {
         const scaleX = vw / tmp.width;
         const scaleY = vh / tmp.height;
         const cx = d[1] * scaleX;
         const cy = d[0] * scaleY;
         const size = d[2] * Math.max(scaleX, scaleY);
-        best = { cx, cy, width: size, height: size };
+        faces.push({ cx, cy, width: size, height: size, score: d[3] });
       }
     }
-    return best;
+    faces.sort((a, b) => b.width - a.width);
+    return faces.slice(0, 8);
   } catch (e) {
     console.warn('pico detection error', e);
-    return null;
+    return [];
   }
 }
 
-async function takePhoto(type, n) {
+async function takePhoto(type, faceIndex, n) {
   const canvas = document.createElement('canvas');
   const vw = video.videoWidth;
   const vh = video.videoHeight;
@@ -212,26 +231,35 @@ async function takePhoto(type, n) {
 
   statusEl.textContent = `Capturing ${n}...`;
 
-  if (type === 'individual') {
-    const face = detectBestFace();
-    const zoom = 2.0;
-    if (face) {
-      const pad = 1.8;
-      sw = Math.min(vw, face.width * pad);
-      sh = Math.min(vh, face.height * pad);
-      const aspect = vw / vh;
-      if (sw / sh > aspect) sh = sw / aspect;
-      else sw = sh * aspect;
-      sw = Math.min(sw, vw);
-      sh = Math.min(sh, vh);
-      sx = Math.max(0, Math.min(vw - sw, face.cx - sw / 2));
-      sy = Math.max(0, Math.min(vh - sh, face.cy - sh / 2));
-    } else {
-      sw = vw / zoom;
-      sh = vh / zoom;
-      sx = Math.random() * (vw - sw);
-      sy = Math.random() * (vh - sh);
+  if (type === 'individual' && faceIndex >= 0 && trackedFaces[faceIndex]) {
+    const current = detectAllFaces();
+    let face = trackedFaces[faceIndex];
+    if (current.length > 0) {
+      let bestDist = Infinity;
+      for (const f of current) {
+        const dist = Math.hypot(f.cx - face.cx, f.cy - face.cy);
+        if (dist < bestDist) {
+          bestDist = dist;
+          face = f;
+        }
+      }
     }
+    const pad = 1.8;
+    sw = Math.min(vw, face.width * pad);
+    sh = Math.min(vh, face.height * pad);
+    const aspect = vw / vh;
+    if (sw / sh > aspect) sh = sw / aspect;
+    else sw = sh * aspect;
+    sw = Math.min(sw, vw);
+    sh = Math.min(sh, vh);
+    sx = Math.max(0, Math.min(vw - sw, face.cx - sw / 2));
+    sy = Math.max(0, Math.min(vh - sh, face.cy - sh / 2));
+  } else if (type === 'individual') {
+    const zoom = 2.0;
+    sw = vw / zoom;
+    sh = vh / zoom;
+    sx = Math.random() * (vw - sw);
+    sy = Math.random() * (vh - sh);
   }
 
   const aspect = sw / sh;
