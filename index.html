@@ -3,48 +3,193 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Random Group & Close-ups</title>
-<meta name="theme-color" content="#1a1a1a">
+<title>Group Capture</title>
+<meta name="theme-color" content="#0f0f0f">
 <link rel="manifest" href="manifest.json">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #111; color: #fff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-h1 { font-size: 1.4rem; margin-bottom: 20px; font-weight: 500; }
-.controls { width: 100%; max-width: 400px; background: #1e1e1e; border-radius: 16px; padding: 20px; margin-bottom: 20px; }
-label { display: block; margin: 12px 0 6px; font-size: 0.9rem; color: #aaa; }
-input[type="number"] { width: 100%; padding: 12px; border-radius: 10px; border: none; background: #2a2a2a; color: #fff; font-size: 1rem; }
-button { width: 100%; padding: 16px; margin-top: 16px; border: none; border-radius: 12px; background: #007aff; color: #fff; font-size: 1.1rem; font-weight: 600; cursor: pointer; }
-button:disabled { background: #444; }
-#video-container { width: 100%; max-width: 400px; position: relative; border-radius: 16px; overflow: hidden; background: #000; margin-bottom: 20px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: #0a0a0a;
+  color: #f5f5f5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px;
+  line-height: 1.4;
+}
+.header {
+  text-align: center;
+  margin-bottom: 28px;
+  width: 100%;
+  max-width: 420px;
+}
+.header h1 {
+  font-size: 1.65rem;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  margin-bottom: 4px;
+}
+.header p {
+  font-size: 0.85rem;
+  color: #888;
+  font-weight: 400;
+}
+.card {
+  width: 100%;
+  max-width: 420px;
+  background: #161616;
+  border: 1px solid #2a2a2a;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+label {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: 0.82rem;
+  color: #aaa;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+input[type="number"] {
+  width: 100%;
+  padding: 14px 12px;
+  border-radius: 10px;
+  border: 1px solid #333;
+  background: #1c1c1c;
+  color: #fff;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+input[type="number"]:focus {
+  border-color: #0a84ff;
+}
+.note {
+  font-size: 0.8rem;
+  color: #777;
+  margin-top: 12px;
+  line-height: 1.45;
+}
+button {
+  width: 100%;
+  padding: 16px;
+  margin-top: 18px;
+  border: none;
+  border-radius: 12px;
+  background: #0a84ff;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+button:active { transform: scale(0.98); }
+button:disabled { background: #333; color: #666; }
+#startTimerBtn {
+  display: none;
+  background: #ff9f0a;
+  margin: 12px 0 8px;
+}
+#video-container {
+  width: 100%;
+  max-width: 420px;
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #000;
+  margin-bottom: 16px;
+  border: 1px solid #222;
+}
 video { width: 100%; display: block; }
-#status { text-align: center; margin: 10px 0; font-size: 1.1rem; color: #0f0; min-height: 1.4em; font-weight: 600; }
-#countdown { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 6rem; font-weight: 700; color: #fff; text-shadow: 0 0 20px #000; z-index: 10; pointer-events: none; }
-#complete-banner { display: none; width: 100%; max-width: 400px; background: #34c759; color: #000; text-align: center; padding: 20px; border-radius: 16px; font-size: 1.3rem; font-weight: 700; margin: 10px 0; }
-#gallery { width: 100%; max-width: 400px; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
-#gallery img { width: 100%; border-radius: 8px; }
-.download-btn { background: #34c759; margin-top: 8px; font-size: 0.9rem; padding: 10px; display: block; text-align: center; text-decoration: none; color: #fff; border-radius: 8px; }
-#startTimerBtn { display: none; width: 100%; max-width: 400px; margin: 10px 0; background: #ff9500; }
-.note { font-size: 0.85rem; color: #aaa; margin-top: 8px; line-height: 1.3; }
+#status {
+  text-align: center;
+  margin: 12px 0;
+  font-size: 0.95rem;
+  color: #30d158;
+  min-height: 1.4em;
+  font-weight: 500;
+  max-width: 420px;
+}
+#countdown {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 7rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 4px 24px rgba(0,0,0,0.6);
+  z-index: 10;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+#complete-banner {
+  display: none;
+  width: 100%;
+  max-width: 420px;
+  background: #30d158;
+  color: #000;
+  text-align: center;
+  padding: 18px 16px;
+  border-radius: 14px;
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 12px 0;
+}
+#gallery {
+  width: 100%;
+  max-width: 420px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+#gallery img {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #222;
+}
+.download-btn {
+  background: #30d158;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  padding: 10px;
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  color: #000;
+  border-radius: 8px;
+  font-weight: 500;
+}
 </style>
 <script src="https://cdn.jsdelivr.net/gh/nenadmarkus/picojs@master/pico.js"></script>
 </head>
 <body>
-<h1>Random Group & Close-ups</h1>
-<div class="controls" id="setup">
-  <label for="numGroup">Group photos (full view)</label>
+<div class="header">
+  <h1>Group Capture</h1>
+  <p>Automated photos & videos</p>
+</div>
+
+<div class="card" id="setup">
+  <label for="numGroup">Group Photos</label>
   <input type="number" id="numGroup" min="0" max="20" value="3">
-  <label for="duration">Total time (minutes)</label>
+  <label for="duration">Session Length (minutes)</label>
   <input type="number" id="duration" min="1" max="30" value="3" step="0.5">
-  <p class="note">Per person detected: 3 close-up photos + 3 videos (2 close-up, 1 full-body), 15s each, evenly spaced & alternating</p>
+  <p class="note">Detects people at start. Per person: 3 close-up photos + 3 videos (2 close-up, 1 full-body), 15s each, evenly spaced.</p>
   <button id="startBtn">Start Camera</button>
 </div>
+
 <div id="video-container" style="display:none;">
   <div id="countdown"></div>
   <video id="video" autoplay playsinline muted></video>
 </div>
-<button id="startTimerBtn">Start Timer</button>
+<button id="startTimerBtn">Start Session</button>
 <div id="status"></div>
-<div id="complete-banner">Session Complete! Downloading photos & videos...</div>
+<div id="complete-banner">Session complete — saving files</div>
 <div id="gallery"></div>
 <script>
 const video = document.getElementById('video');
@@ -69,16 +214,16 @@ let videoClips = [];
 async function loadCascade() {
   if (cascadeReady) return;
   try {
-    statusEl.textContent = 'Loading face detection...';
+    statusEl.textContent = 'Preparing face detection…';
     const response = await fetch('https://raw.githubusercontent.com/nenadmarkus/pico/master/rnt/cascades/facefinder');
     const buffer = await response.arrayBuffer();
     const bytes = new Int8Array(buffer);
     facefinder_classify_region = pico.unpack_cascade(bytes);
     cascadeReady = true;
-    statusEl.textContent = 'Face detection ready';
+    statusEl.textContent = 'Ready';
   } catch (e) {
     console.error('Cascade load failed', e);
-    statusEl.textContent = 'Face detection unavailable (continuing without it)';
+    statusEl.textContent = 'Face detection unavailable';
   }
 }
 
@@ -99,12 +244,10 @@ startBtn.addEventListener('click', async () => {
     videoContainer.style.display = 'block';
     startTimerBtn.style.display = 'block';
     completeBanner.style.display = 'none';
-    statusEl.textContent = cascadeReady
-      ? 'Camera ready — tap Start Timer when everyone is set'
-      : 'Camera ready (face detection off) — tap Start Timer';
+    statusEl.textContent = cascadeReady ? 'Camera ready — tap Start Session when set' : 'Camera ready (no face detection)';
     sessionParams = { numGroup, totalDuration, minutes };
   } catch (err) {
-    statusEl.textContent = 'Camera permission denied or unavailable';
+    statusEl.textContent = 'Camera permission denied';
     console.error(err);
   }
 });
@@ -112,7 +255,7 @@ startBtn.addEventListener('click', async () => {
 startTimerBtn.addEventListener('click', () => {
   if (!sessionParams) return;
   startTimerBtn.style.display = 'none';
-  statusEl.textContent = 'Get ready...';
+  statusEl.textContent = 'Get ready…';
   startCountdown(15, () => beginSession(sessionParams.numGroup, sessionParams.totalDuration, sessionParams.minutes));
 });
 
@@ -125,7 +268,7 @@ function startCountdown(seconds, onDone) {
     if (remaining <= 0) {
       clearInterval(interval);
       countdownEl.style.display = 'none';
-      statusEl.textContent = 'Starting now!';
+      statusEl.textContent = 'Session started';
       onDone();
     } else {
       countdownEl.textContent = remaining;
@@ -137,8 +280,8 @@ function beginSession(numGroup, totalDuration, minutes) {
   trackedFaces = detectAllFaces();
   const numPeople = trackedFaces.length;
   statusEl.textContent = numPeople > 0
-    ? `Detected ${numPeople} person${numPeople>1?'s':''} — scheduling photos + videos`
-    : 'No faces detected — group photos only';
+    ? `Detected ${numPeople} person${numPeople>1?'s':''}`
+    : 'No faces detected';
 
   schedule = [];
   videoClips = [];
@@ -189,7 +332,7 @@ function beginSession(numGroup, totalDuration, minutes) {
 
   const totalCloseups = numPeople * 3;
   const totalVideos = numPeople * 3;
-  statusEl.textContent = `Session running — ${numGroup} group + ${totalCloseups} close-ups + ${totalVideos} videos over ${minutes} min`;
+  statusEl.textContent = `${numGroup} group · ${totalCloseups} close-ups · ${totalVideos} videos`;
 
   schedule.forEach((item, idx) => {
     if (item.type === 'video') {
@@ -273,7 +416,7 @@ async function takePhoto(type, faceIndex, n) {
   const vh = video.videoHeight;
   let sx = 0, sy = 0, sw = vw, sh = vh;
 
-  statusEl.textContent = `Capturing photo ${n}...`;
+  statusEl.textContent = `Photo ${n}`;
 
   if (type === 'individual') {
     const face = getFaceForIndex(faceIndex);
@@ -318,13 +461,12 @@ async function takePhoto(type, faceIndex, n) {
   img.src = dataUrl;
   img.title = type === 'group' ? 'Group' : 'Close-up';
   gallery.appendChild(img);
-  statusEl.textContent = `Captured photo ${n}`;
-  video.style.filter = 'brightness(2)';
-  setTimeout(() => video.style.filter = '', 120);
+  video.style.filter = 'brightness(1.8)';
+  setTimeout(() => video.style.filter = '', 100);
 }
 
 async function startVideoClip(faceIndex, mode, n) {
-  statusEl.textContent = `Recording video ${n} (${mode})...`;
+  statusEl.textContent = `Video ${n} · ${mode}`;
   const isCloseup = mode === 'closeup';
   let recordStream = stream;
   let canvas = null;
@@ -402,8 +544,8 @@ function endSession() {
     stream.getTracks().forEach(t => t.stop());
     stream = null;
   }
-  statusEl.textContent = 'All photos & videos captured — downloading...';
-  statusEl.style.color = '#34c759';
+  statusEl.textContent = 'Complete';
+  statusEl.style.color = '#30d158';
   completeBanner.style.display = 'block';
   videoContainer.style.display = 'none';
   video.srcObject = null;
@@ -415,7 +557,7 @@ function endSession() {
     const a = document.createElement('a');
     a.href = p.url;
     a.download = filename;
-    a.textContent = `Download ${p.type} ${i+1}`;
+    a.textContent = `Save ${p.type} ${i+1}`;
     a.className = 'download-btn';
     gallery.parentNode.appendChild(a);
   });
@@ -424,6 +566,8 @@ function endSession() {
   again.textContent = 'New Session';
   again.onclick = () => location.reload();
   again.style.marginTop = '20px';
+  again.style.background = '#1c1c1c';
+  again.style.border = '1px solid #333';
   document.body.appendChild(again);
 }
 </script>
