@@ -24,6 +24,7 @@ video { width: 100%; display: block; }
 #gallery img { width: 100%; border-radius: 8px; }
 .download-btn { background: #34c759; margin-top: 8px; font-size: 0.9rem; padding: 10px; display: block; text-align: center; text-decoration: none; color: #fff; border-radius: 8px; }
 #startTimerBtn { display: none; width: 100%; max-width: 400px; margin: 10px 0; background: #ff9500; }
+.note { font-size: 0.85rem; color: #aaa; margin-top: 8px; line-height: 1.3; }
 </style>
 <script src="https://cdn.jsdelivr.net/gh/nenadmarkus/picojs@master/pico.js"></script>
 </head>
@@ -33,8 +34,8 @@ video { width: 100%; display: block; }
   <label for="numGroup">Group photos (full view)</label>
   <input type="number" id="numGroup" min="0" max="20" value="3">
   <label for="duration">Total time (minutes)</label>
-  <input type="number" id="duration" min="1" max="30" value="2" step="0.5">
-  <p style="font-size:0.85rem;color:#aaa;margin-top:8px;">Close-ups: 3 per detected person, spaced evenly</p>
+  <input type="number" id="duration" min="1" max="30" value="3" step="0.5">
+  <p class="note">Per person detected: 3 close-up photos + 3 videos (2 close-up, 1 full-body), 15s each, evenly spaced & alternating</p>
   <button id="startBtn">Start Camera</button>
 </div>
 <div id="video-container" style="display:none;">
@@ -43,7 +44,7 @@ video { width: 100%; display: block; }
 </div>
 <button id="startTimerBtn">Start Timer</button>
 <div id="status"></div>
-<div id="complete-banner">Session Complete! Downloading photos...</div>
+<div id="complete-banner">Session Complete! Downloading photos & videos...</div>
 <div id="gallery"></div>
 <script>
 const video = document.getElementById('video');
@@ -63,6 +64,7 @@ let facefinder_classify_region = function() { return -1.0; };
 let cascadeReady = false;
 let sessionParams = null;
 let trackedFaces = [];
+let videoClips = [];
 
 async function loadCascade() {
   if (cascadeReady) return;
@@ -84,12 +86,8 @@ setTimeout(loadCascade, 200);
 
 startBtn.addEventListener('click', async () => {
   const numGroup = Math.max(0, parseInt(document.getElementById('numGroup').value) || 0);
-  const minutes = Math.max(0.5, parseFloat(document.getElementById('duration').value) || 2);
+  const minutes = Math.max(0.5, parseFloat(document.getElementById('duration').value) || 3);
   const totalDuration = minutes * 60 * 1000;
-  if (numGroup < 0) {
-    statusEl.textContent = 'Invalid group count';
-    return;
-  }
   if (!cascadeReady) await loadCascade();
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -139,10 +137,11 @@ function beginSession(numGroup, totalDuration, minutes) {
   trackedFaces = detectAllFaces();
   const numPeople = trackedFaces.length;
   statusEl.textContent = numPeople > 0
-    ? `Detected ${numPeople} person${numPeople>1?'s':''} — scheduling 3 close-ups each`
+    ? `Detected ${numPeople} person${numPeople>1?'s':''} — scheduling photos + videos`
     : 'No faces detected — group photos only';
 
   schedule = [];
+  videoClips = [];
 
   if (numGroup > 0) {
     for (let i = 0; i < numGroup; i++) {
@@ -155,10 +154,32 @@ function beginSession(numGroup, totalDuration, minutes) {
     for (let p = 0; p < numPeople; p++) {
       for (let shot = 0; shot < 3; shot++) {
         const base = (shot + 0.5) / 3;
-        const offset = (p * 0.15) % 0.3;
-        const t = (base + offset) * (totalDuration - 3000) + 1500;
+        const offset = (p * 0.12) % 0.25;
+        const t = (base + offset) * (totalDuration - 4000) + 2000;
         schedule.push({ t, type: 'individual', faceIndex: p });
       }
+    }
+  }
+
+  if (numPeople > 0) {
+    const videoSlots = [];
+    for (let p = 0; p < numPeople; p++) {
+      videoSlots.push({ faceIndex: p, mode: 'closeup' });
+      videoSlots.push({ faceIndex: p, mode: 'closeup' });
+      videoSlots.push({ faceIndex: p, mode: 'full' });
+    }
+    videoSlots.sort((a, b) => (a.faceIndex - b.faceIndex) || (a.mode === 'full' ? 1 : -1));
+
+    const videoDuration = 15000;
+    const usable = Math.max(totalDuration - videoDuration - 2000, 10000);
+    for (let i = 0; i < videoSlots.length; i++) {
+      const t = ((i + 0.5) / videoSlots.length) * usable + 1000;
+      schedule.push({
+        t,
+        type: 'video',
+        faceIndex: videoSlots[i].faceIndex,
+        mode: videoSlots[i].mode
+      });
     }
   }
 
@@ -167,11 +188,17 @@ function beginSession(numGroup, totalDuration, minutes) {
   gallery.innerHTML = '';
 
   const totalCloseups = numPeople * 3;
-  statusEl.textContent = `Session running — ${numGroup} group + ${totalCloseups} close-ups over ${minutes} min`;
+  const totalVideos = numPeople * 3;
+  statusEl.textContent = `Session running — ${numGroup} group + ${totalCloseups} close-ups + ${totalVideos} videos over ${minutes} min`;
 
   schedule.forEach((item, idx) => {
-    const to = setTimeout(() => takePhoto(item.type, item.faceIndex, idx + 1), item.t);
-    timeouts.push(to);
+    if (item.type === 'video') {
+      const to = setTimeout(() => startVideoClip(item.faceIndex, item.mode, idx + 1), item.t);
+      timeouts.push(to);
+    } else {
+      const to = setTimeout(() => takePhoto(item.type, item.faceIndex, idx + 1), item.t);
+      timeouts.push(to);
+    }
   });
   setTimeout(endSession, totalDuration);
 }
@@ -216,11 +243,28 @@ function detectAllFaces() {
       }
     }
     faces.sort((a, b) => b.width - a.width);
-    return faces.slice(0, 8);
+    return faces.slice(0, 6);
   } catch (e) {
     console.warn('pico detection error', e);
     return [];
   }
+}
+
+function getFaceForIndex(faceIndex) {
+  if (faceIndex < 0 || !trackedFaces[faceIndex]) return null;
+  const current = detectAllFaces();
+  let face = trackedFaces[faceIndex];
+  if (current.length > 0) {
+    let bestDist = Infinity;
+    for (const f of current) {
+      const dist = Math.hypot(f.cx - face.cx, f.cy - face.cy);
+      if (dist < bestDist) {
+        bestDist = dist;
+        face = f;
+      }
+    }
+  }
+  return face;
 }
 
 async function takePhoto(type, faceIndex, n) {
@@ -229,37 +273,28 @@ async function takePhoto(type, faceIndex, n) {
   const vh = video.videoHeight;
   let sx = 0, sy = 0, sw = vw, sh = vh;
 
-  statusEl.textContent = `Capturing ${n}...`;
+  statusEl.textContent = `Capturing photo ${n}...`;
 
-  if (type === 'individual' && faceIndex >= 0 && trackedFaces[faceIndex]) {
-    const current = detectAllFaces();
-    let face = trackedFaces[faceIndex];
-    if (current.length > 0) {
-      let bestDist = Infinity;
-      for (const f of current) {
-        const dist = Math.hypot(f.cx - face.cx, f.cy - face.cy);
-        if (dist < bestDist) {
-          bestDist = dist;
-          face = f;
-        }
-      }
+  if (type === 'individual') {
+    const face = getFaceForIndex(faceIndex);
+    if (face) {
+      const pad = 1.8;
+      sw = Math.min(vw, face.width * pad);
+      sh = Math.min(vh, face.height * pad);
+      const aspect = vw / vh;
+      if (sw / sh > aspect) sh = sw / aspect;
+      else sw = sh * aspect;
+      sw = Math.min(sw, vw);
+      sh = Math.min(sh, vh);
+      sx = Math.max(0, Math.min(vw - sw, face.cx - sw / 2));
+      sy = Math.max(0, Math.min(vh - sh, face.cy - sh / 2));
+    } else {
+      const zoom = 2.0;
+      sw = vw / zoom;
+      sh = vh / zoom;
+      sx = Math.random() * (vw - sw);
+      sy = Math.random() * (vh - sh);
     }
-    const pad = 1.8;
-    sw = Math.min(vw, face.width * pad);
-    sh = Math.min(vh, face.height * pad);
-    const aspect = vw / vh;
-    if (sw / sh > aspect) sh = sw / aspect;
-    else sw = sh * aspect;
-    sw = Math.min(sw, vw);
-    sh = Math.min(sh, vh);
-    sx = Math.max(0, Math.min(vw - sw, face.cx - sw / 2));
-    sy = Math.max(0, Math.min(vh - sh, face.cy - sh / 2));
-  } else if (type === 'individual') {
-    const zoom = 2.0;
-    sw = vw / zoom;
-    sh = vh / zoom;
-    sx = Math.random() * (vw - sw);
-    sy = Math.random() * (vh - sh);
   }
 
   const aspect = sw / sh;
@@ -278,14 +313,77 @@ async function takePhoto(type, faceIndex, n) {
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
 
   const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-  photos.push({ url: dataUrl, type });
+  photos.push({ url: dataUrl, type: 'photo-' + type });
   const img = document.createElement('img');
   img.src = dataUrl;
   img.title = type === 'group' ? 'Group' : 'Close-up';
   gallery.appendChild(img);
-  statusEl.textContent = `Captured ${n}: ${type === 'group' ? 'group' : 'close-up'}`;
+  statusEl.textContent = `Captured photo ${n}`;
   video.style.filter = 'brightness(2)';
   setTimeout(() => video.style.filter = '', 120);
+}
+
+async function startVideoClip(faceIndex, mode, n) {
+  statusEl.textContent = `Recording video ${n} (${mode})...`;
+  const isCloseup = mode === 'closeup';
+  let recordStream = stream;
+  let canvas = null;
+  let animId = null;
+
+  if (isCloseup) {
+    canvas = document.createElement('canvas');
+    const face = getFaceForIndex(faceIndex) || { cx: video.videoWidth/2, cy: video.videoHeight/2, width: video.videoWidth/2, height: video.videoHeight/2 };
+    const pad = 1.6;
+    let sw = Math.min(video.videoWidth, face.width * pad);
+    let sh = Math.min(video.videoHeight, face.height * pad);
+    const aspect = video.videoWidth / video.videoHeight;
+    if (sw / sh > aspect) sh = sw / aspect;
+    else sw = sh * aspect;
+    const sx = Math.max(0, Math.min(video.videoWidth - sw, face.cx - sw / 2));
+    const sy = Math.max(0, Math.min(video.videoHeight - sh, face.cy - sh / 2));
+
+    canvas.width = 720;
+    canvas.height = Math.round(720 * (sh / sw));
+    const ctx = canvas.getContext('2d');
+
+    function draw() {
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      animId = requestAnimationFrame(draw);
+    }
+    draw();
+    recordStream = canvas.captureStream(15);
+  }
+
+  try {
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' :
+                 MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/mp4';
+    const recorder = new MediaRecorder(recordStream, { mimeType: mime });
+    const chunks = [];
+    recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => {
+      if (animId) cancelAnimationFrame(animId);
+      const blob = new Blob(chunks, { type: mime });
+      const url = URL.createObjectURL(blob);
+      videoClips.push({ url, type: `video-${mode}-p${faceIndex+1}`, mime });
+      statusEl.textContent = `Video ${n} saved`;
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `video-${mode}-person${faceIndex+1}-${n}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }, 300);
+    };
+    recorder.start();
+    setTimeout(() => {
+      if (recorder.state === 'recording') recorder.stop();
+    }, 15000);
+  } catch (e) {
+    console.error('Video record failed', e);
+    statusEl.textContent = 'Video recording failed';
+    if (animId) cancelAnimationFrame(animId);
+  }
 }
 
 function downloadPhoto(dataUrl, filename) {
@@ -304,7 +402,7 @@ function endSession() {
     stream.getTracks().forEach(t => t.stop());
     stream = null;
   }
-  statusEl.textContent = 'All photos captured — downloading...';
+  statusEl.textContent = 'All photos & videos captured — downloading...';
   statusEl.style.color = '#34c759';
   completeBanner.style.display = 'block';
   videoContainer.style.display = 'none';
@@ -313,7 +411,7 @@ function endSession() {
 
   photos.forEach((p, i) => {
     const filename = `${p.type}-${i+1}.jpg`;
-    setTimeout(() => downloadPhoto(p.url, filename), i * 600);
+    setTimeout(() => downloadPhoto(p.url, filename), i * 500);
     const a = document.createElement('a');
     a.href = p.url;
     a.download = filename;
