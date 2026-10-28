@@ -34,8 +34,8 @@ video { width: 100%; display: block; }
   <input type="number" id="numGroup" min="0" max="20" value="3">
   <label for="numIndividual">Individual close-ups</label>
   <input type="number" id="numIndividual" min="0" max="20" value="4">
-  <label for="duration">Total time (seconds)</label>
-  <input type="number" id="duration" min="5" max="300" value="40">
+  <label for="duration">Total time (minutes)</label>
+  <input type="number" id="duration" min="1" max="30" value="2" step="0.5">
   <button id="startBtn">Start Camera</button>
 </div>
 <div id="video-container" style="display:none;">
@@ -80,7 +80,8 @@ loadFaceModel();
 startBtn.addEventListener('click', async () => {
   const numGroup = Math.max(0, parseInt(document.getElementById('numGroup').value) || 0);
   const numIndividual = Math.max(0, parseInt(document.getElementById('numIndividual').value) || 0);
-  const totalDuration = (Math.max(5, parseInt(document.getElementById('duration').value) || 30)) * 1000;
+  const minutes = Math.max(0.5, parseFloat(document.getElementById('duration').value) || 2);
+  const totalDuration = minutes * 60 * 1000;
   const totalShots = numGroup + numIndividual;
   if (totalShots < 1) {
     statusEl.textContent = 'Choose at least one photo';
@@ -97,7 +98,7 @@ startBtn.addEventListener('click', async () => {
     videoContainer.style.display = 'block';
     completeBanner.style.display = 'none';
     statusEl.textContent = 'Get ready...';
-    startCountdown(10, () => beginSession(numGroup, numIndividual, totalDuration));
+    startCountdown(15, () => beginSession(numGroup, numIndividual, totalDuration, minutes));
   } catch (err) {
     statusEl.textContent = 'Camera permission denied or unavailable';
     console.error(err);
@@ -121,7 +122,7 @@ function startCountdown(seconds, onDone) {
   }, 1000);
 }
 
-function beginSession(numGroup, numIndividual, totalDuration) {
+function beginSession(numGroup, numIndividual, totalDuration, minutes) {
   const totalShots = numGroup + numIndividual;
   schedule = [];
   for (let i = 0; i < totalShots; i++) {
@@ -132,7 +133,7 @@ function beginSession(numGroup, numIndividual, totalDuration) {
   schedule.sort((a, b) => a.t - b.t);
   photos = [];
   gallery.innerHTML = '';
-  statusEl.textContent = `Session running — ${numGroup} group + ${numIndividual} close-ups over ${totalDuration/1000}s`;
+  statusEl.textContent = `Session running — ${numGroup} group + ${numIndividual} close-ups over ${minutes} min`;
   schedule.forEach((item, idx) => {
     const to = setTimeout(() => takePhoto(item.type, idx + 1), item.t);
     timeouts.push(to);
@@ -240,11 +241,15 @@ function downloadPhoto(dataUrl, filename) {
 
 function endSession() {
   timeouts.forEach(clearTimeout);
-  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
   statusEl.textContent = 'All photos captured — downloading...';
   statusEl.style.color = '#34c759';
   completeBanner.style.display = 'block';
   videoContainer.style.display = 'none';
+  video.srcObject = null;
 
   photos.forEach((p, i) => {
     const filename = `${p.type}-${i+1}.jpg`;
