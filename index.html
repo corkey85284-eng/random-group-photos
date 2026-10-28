@@ -24,6 +24,8 @@ video { width: 100%; display: block; }
 #gallery img { width: 100%; border-radius: 8px; }
 .download-btn { background: #34c759; margin-top: 8px; font-size: 0.9rem; padding: 10px; display: block; text-align: center; text-decoration: none; color: #fff; border-radius: 8px; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.1.0/dist/blazeface.min.js"></script>
 </head>
 <body>
 <h1>Random Group & Close-ups</h1>
@@ -56,6 +58,24 @@ let stream = null;
 let photos = [];
 let schedule = [];
 let timeouts = [];
+let faceModel = null;
+let modelLoading = false;
+
+async function loadFaceModel() {
+  if (faceModel || modelLoading) return;
+  modelLoading = true;
+  try {
+    statusEl.textContent = 'Loading face detection...';
+    faceModel = await blazeface.load();
+    statusEl.textContent = 'Face detection ready';
+  } catch (e) {
+    console.error('Face model failed to load', e);
+    statusEl.textContent = 'Face detection unavailable (continuing without it)';
+  }
+  modelLoading = false;
+}
+
+loadFaceModel();
 
 startBtn.addEventListener('click', async () => {
   const numGroup = Math.max(0, parseInt(document.getElementById('numGroup').value) || 0);
@@ -66,6 +86,7 @@ startBtn.addEventListener('click', async () => {
     statusEl.textContent = 'Choose at least one photo';
     return;
   }
+  if (!faceModel) await loadFaceModel();
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -119,21 +140,68 @@ function beginSession(numGroup, numIndividual, totalDuration) {
   setTimeout(endSession, totalDuration);
 }
 
-function takePhoto(type, n) {
+async function detectBestFace(vw, vh) {
+  if (!faceModel) return null;
+  try {
+    const predictions = await faceModel.estimateFaces(video, false);
+    if (!predictions || predictions.length === 0) return null;
+    let best = predictions[0];
+    let bestArea = 0;
+    for (const p of predictions) {
+      const [x1, y1] = p.topLeft;
+      const [x2, y2] = p.bottomRight;
+      const area = (x2 - x1) * (y2 - y1);
+      if (area > bestArea) {
+        bestArea = area;
+        best = p;
+      }
+    }
+    const [x1, y1] = best.topLeft;
+    const [x2, y2] = best.bottomRight;
+    return {
+      x: x1,
+      y: y1,
+      width: x2 - x1,
+      height: y2 - y1,
+      cx: (x1 + x2) / 2,
+      cy: (y1 + y2) / 2
+    };
+  } catch (e) {
+    console.warn('Face detection error', e);
+    return null;
+  }
+}
+
+async function takePhoto(type, n) {
   const canvas = document.createElement('canvas');
   const vw = video.videoWidth;
   const vh = video.videoHeight;
   let sx = 0, sy = 0, sw = vw, sh = vh;
 
+  statusEl.textContent = `Capturing ${n}...`;
+
   if (type === 'individual') {
-    const zoom = 2.2;
-    sw = vw / zoom;
-    sh = vh / zoom;
-    sx = Math.random() * (vw - sw);
-    sy = Math.random() * (vh - sh);
+    const face = await detectBestFace(vw, vh);
+    const zoom = 2.0;
+    if (face) {
+      const pad = 1.6;
+      sw = Math.min(vw, face.width * pad * zoom);
+      sh = Math.min(vh, face.height * pad * zoom);
+      const aspect = vw / vh;
+      if (sw / sh > aspect) sh = sw / aspect;
+      else sw = sh * aspect;
+      sw = Math.min(sw, vw);
+      sh = Math.min(sh, vh);
+      sx = Math.max(0, Math.min(vw - sw, face.cx - sw / 2));
+      sy = Math.max(0, Math.min(vh - sh, face.cy - sh / 2));
+    } else {
+      sw = vw / zoom;
+      sh = vh / zoom;
+      sx = Math.random() * (vw - sw);
+      sy = Math.random() * (vh - sh);
+    }
   }
 
-  // Preserve aspect ratio — no stretching
   const aspect = sw / sh;
   let outW, outH;
   if (type === 'individual') {
