@@ -252,7 +252,7 @@ startBtn.addEventListener('click', async () => {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: false
+      audio: true
     });
     video.srcObject = stream;
     setup.style.display = 'none';
@@ -385,7 +385,6 @@ function detectAllFaces() {
     const vh = video.videoHeight;
     const allDets = [];
 
-    // Run detection at multiple resolutions for better robustness
     const sizes = [640, 800, 1024];
     for (const maxW of sizes) {
       const tmp = document.createElement('canvas');
@@ -397,7 +396,6 @@ function detectAllFaces() {
       const gray = rgba_to_grayscale(imageData.data, tmp.height, tmp.width);
       const image = { pixels: gray, nrows: tmp.height, ncols: tmp.width, ldim: tmp.width };
 
-      // More sensitive parameters
       const params = { shiftfactor: 0.05, minsize: 15, maxsize: 1200, scalefactor: 1.03 };
       let dets = pico.run_cascade(image, facefinder_classify_region, params);
       dets = pico.cluster_detections(dets, 0.12);
@@ -405,7 +403,7 @@ function detectAllFaces() {
       const scaleX = vw / tmp.width;
       const scaleY = vh / tmp.height;
       for (const d of dets) {
-        if (d[3] > 2.5) {  // lower threshold
+        if (d[3] > 2.5) {
           allDets.push({
             cx: d[1] * scaleX,
             cy: d[0] * scaleY,
@@ -417,7 +415,6 @@ function detectAllFaces() {
       }
     }
 
-    // Deduplicate overlapping detections
     const unique = [];
     for (const f of allDets.sort((a, b) => b.score - a.score)) {
       let overlap = false;
@@ -539,7 +536,12 @@ async function startVideoClip(faceIndex, mode, n) {
       animId = requestAnimationFrame(draw);
     }
     draw();
-    recordStream = canvas.captureStream(15);
+    const canvasStream = canvas.captureStream(15);
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length) {
+      canvasStream.addTrack(audioTracks[0]);
+    }
+    recordStream = canvasStream;
   }
 
   try {
