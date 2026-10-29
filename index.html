@@ -295,8 +295,8 @@ function beginSession(numGroup, totalDuration, minutes) {
   trackedFaces = detectAllFaces();
   const numPeople = trackedFaces.length;
   statusEl.textContent = numPeople > 0
-    ? `Detected ${numPeople} person${numPeople>1?'s':''}`
-    : 'No faces detected';
+    ? `Detected ${numPeople} person${numPeople>1?'s':''} — scheduling close-ups & videos`
+    : 'No faces detected — taking group photos only';
 
   schedule = [];
   videoClips = [];
