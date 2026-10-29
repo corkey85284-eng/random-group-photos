@@ -383,33 +383,56 @@ function detectAllFaces() {
   try {
     const vw = video.videoWidth;
     const vh = video.videoHeight;
-    const tmp = document.createElement('canvas');
-    tmp.width = Math.min(vw, 800);
-    tmp.height = Math.round(tmp.width * (vh / vw));
-    const ctx = tmp.getContext('2d');
-    ctx.drawImage(video, 0, 0, tmp.width, tmp.height);
-    const imageData = ctx.getImageData(0, 0, tmp.width, tmp.height);
-    const gray = rgba_to_grayscale(imageData.data, tmp.height, tmp.width);
-    const image = { pixels: gray, nrows: tmp.height, ncols: tmp.width, ldim: tmp.width };
+    const allDets = [];
 
-    const params = { shiftfactor: 0.08, minsize: 20, maxsize: 1000, scalefactor: 1.05 };
-    let dets = pico.run_cascade(image, facefinder_classify_region, params);
-    dets = pico.cluster_detections(dets, 0.15);
+    // Run detection at multiple resolutions for better robustness
+    const sizes = [640, 800, 1024];
+    for (const maxW of sizes) {
+      const tmp = document.createElement('canvas');
+      tmp.width = Math.min(vw, maxW);
+      tmp.height = Math.round(tmp.width * (vh / vw));
+      const ctx = tmp.getContext('2d');
+      ctx.drawImage(video, 0, 0, tmp.width, tmp.height);
+      const imageData = ctx.getImageData(0, 0, tmp.width, tmp.height);
+      const gray = rgba_to_grayscale(imageData.data, tmp.height, tmp.width);
+      const image = { pixels: gray, nrows: tmp.height, ncols: tmp.width, ldim: tmp.width };
 
-    const qthresh = 3.0;
-    const faces = [];
-    for (const d of dets) {
-      if (d[3] > qthresh) {
-        const scaleX = vw / tmp.width;
-        const scaleY = vh / tmp.height;
-        const cx = d[1] * scaleX;
-        const cy = d[0] * scaleY;
-        const size = d[2] * Math.max(scaleX, scaleY);
-        faces.push({ cx, cy, width: size, height: size, score: d[3] });
+      // More sensitive parameters
+      const params = { shiftfactor: 0.05, minsize: 15, maxsize: 1200, scalefactor: 1.03 };
+      let dets = pico.run_cascade(image, facefinder_classify_region, params);
+      dets = pico.cluster_detections(dets, 0.12);
+
+      const scaleX = vw / tmp.width;
+      const scaleY = vh / tmp.height;
+      for (const d of dets) {
+        if (d[3] > 2.5) {  // lower threshold
+          allDets.push({
+            cx: d[1] * scaleX,
+            cy: d[0] * scaleY,
+            width: d[2] * Math.max(scaleX, scaleY),
+            height: d[2] * Math.max(scaleX, scaleY),
+            score: d[3]
+          });
+        }
       }
     }
-    faces.sort((a, b) => b.score - a.score);
-    return faces.slice(0, 8);
+
+    // Deduplicate overlapping detections
+    const unique = [];
+    for (const f of allDets.sort((a, b) => b.score - a.score)) {
+      let overlap = false;
+      for (const u of unique) {
+        const dist = Math.hypot(f.cx - u.cx, f.cy - u.cy);
+        if (dist < Math.min(f.width, u.width) * 0.4) {
+          overlap = true;
+          break;
+        }
+      }
+      if (!overlap) unique.push(f);
+    }
+
+    unique.sort((a, b) => b.score - a.score);
+    return unique.slice(0, 10);
   } catch (e) {
     console.warn('pico detection error', e);
     return [];
@@ -520,7 +543,6 @@ async function startVideoClip(faceIndex, mode, n) {
   }
 
   try {
-    // Prefer MP4 (better on iPhone) — try several common Safari-compatible strings
     const mp4Candidates = [
       'video/mp4',
       'video/mp4;codecs=avc1',
