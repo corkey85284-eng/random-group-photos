@@ -293,6 +293,11 @@ function startCountdown(seconds, onDone) {
 
 function beginSession(numGroup, totalDuration, minutes) {
   trackedFaces = detectAllFaces();
+  // Quick second pass if nothing found (helps with momentary motion/lighting)
+  if (trackedFaces.length === 0) {
+    await new Promise(r => setTimeout(r, 400));
+    trackedFaces = detectAllFaces();
+  }
   const numPeople = trackedFaces.length;
   statusEl.textContent = numPeople > 0
     ? `Detected ${numPeople} person${numPeople>1?'s':''} — scheduling close-ups & videos`
@@ -379,18 +384,23 @@ function detectAllFaces() {
   try {
     const vw = video.videoWidth;
     const vh = video.videoHeight;
+    // Use a larger detection canvas for better accuracy
     const tmp = document.createElement('canvas');
-    tmp.width = Math.min(vw, 640);
+    tmp.width = Math.min(vw, 800);
     tmp.height = Math.round(tmp.width * (vh / vw));
     const ctx = tmp.getContext('2d');
     ctx.drawImage(video, 0, 0, tmp.width, tmp.height);
     const imageData = ctx.getImageData(0, 0, tmp.width, tmp.height);
     const gray = rgba_to_grayscale(imageData.data, tmp.height, tmp.width);
     const image = { pixels: gray, nrows: tmp.height, ncols: tmp.width, ldim: tmp.width };
-    const params = { shiftfactor: 0.1, minsize: 30, maxsize: 800, scalefactor: 1.1 };
+
+    // More aggressive parameters for robustness
+    const params = { shiftfactor: 0.08, minsize: 20, maxsize: 1000, scalefactor: 1.05 };
     let dets = pico.run_cascade(image, facefinder_classify_region, params);
-    dets = pico.cluster_detections(dets, 0.2);
-    const qthresh = 5.0;
+    dets = pico.cluster_detections(dets, 0.15);
+
+    // Lower quality threshold so more faces are kept
+    const qthresh = 3.0;
     const faces = [];
     for (const d of dets) {
       if (d[3] > qthresh) {
@@ -402,8 +412,8 @@ function detectAllFaces() {
         faces.push({ cx, cy, width: size, height: size, score: d[3] });
       }
     }
-    faces.sort((a, b) => b.width - a.width);
-    return faces.slice(0, 6);
+    faces.sort((a, b) => b.score - a.score);
+    return faces.slice(0, 8);
   } catch (e) {
     console.warn('pico detection error', e);
     return [];
