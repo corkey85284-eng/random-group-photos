@@ -520,7 +520,8 @@ async function startVideoClip(faceIndex, mode, n) {
   }
 
   try {
-    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' :
+    const mime = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' :
+                 MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' :
                  MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/mp4';
     const recorder = new MediaRecorder(recordStream, { mimeType: mime });
     const chunks = [];
