@@ -578,34 +578,63 @@ function endSession() {
   video.srcObject = null;
   startTimerBtn.style.display = 'none';
 
-  photos.forEach((p, i) => {
-    const filename = `${p.type}-${i+1}.jpg`;
-    const btn = document.createElement('button');
-    btn.textContent = `Save ${p.type === 'photo-group' ? 'Group' : 'Close-up'} ${i+1}`;
-    btn.className = 'download-btn';
-    btn.style.marginTop = '8px';
-    btn.onclick = async () => {
+  // Single Save All button for photos + videos
+  const saveAllBtn = document.createElement('button');
+  saveAllBtn.textContent = 'Save All Photos & Videos';
+  saveAllBtn.className = 'download-btn';
+  saveAllBtn.style.marginTop = '16px';
+  saveAllBtn.style.fontSize = '1rem';
+  saveAllBtn.style.padding = '16px';
+  saveAllBtn.onclick = async () => {
+    saveAllBtn.disabled = true;
+    saveAllBtn.textContent = 'Preparing…';
+    const files = [];
+    // Photos
+    for (let i = 0; i < photos.length; i++) {
+      const p = photos[i];
+      const filename = p.type + '-' + (i+1) + '.jpg';
       try {
         const res = await fetch(p.url);
         const blob = await res.blob();
-        const file = new File([blob], filename, { type: 'image/jpeg' });
-        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: filename });
-        } else {
+        files.push(new File([blob], filename, { type: 'image/jpeg' }));
+      } catch (e) {}
+    }
+    // Videos
+    for (let i = 0; i < videoClips.length; i++) {
+      const v = videoClips[i];
+      const ext = (v.mime && v.mime.includes('mp4')) ? 'mp4' : 'webm';
+      const filename = (v.type || 'video') + '-' + (i+1) + '.' + ext;
+      try {
+        const res = await fetch(v.url);
+        const blob = await res.blob();
+        files.push(new File([blob], filename, { type: v.mime || 'video/webm' }));
+      } catch (e) {}
+    }
+    if (files.length === 0) {
+      saveAllBtn.textContent = 'Nothing to save';
+      return;
+    }
+    try {
+      if (navigator.share && navigator.canShare && navigator.canShare({ files })) {
+        await navigator.share({ files, title: 'Group Capture Session' });
+        saveAllBtn.textContent = 'Shared';
+      } else {
+        // Fallback: sequential downloads
+        for (const file of files) {
           const a = document.createElement('a');
-          a.href = p.url;
-          a.download = filename;
+          a.href = URL.createObjectURL(file);
+          a.download = file.name;
           a.click();
+          await new Promise(r => setTimeout(r, 400));
         }
-      } catch (e) {
-        const a = document.createElement('a');
-        a.href = p.url;
-        a.download = filename;
-        a.click();
+        saveAllBtn.textContent = 'Downloaded';
       }
-    };
-    gallery.parentNode.appendChild(btn);
-  });
+    } catch (e) {
+      saveAllBtn.textContent = 'Save All Photos & Videos';
+      saveAllBtn.disabled = false;
+    }
+  };
+  gallery.parentNode.appendChild(saveAllBtn);
 
   const again = document.createElement('button');
   again.textContent = 'New Session';
