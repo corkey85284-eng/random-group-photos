@@ -570,13 +570,31 @@ function endSession() {
 
   photos.forEach((p, i) => {
     const filename = `${p.type}-${i+1}.jpg`;
-    setTimeout(() => downloadPhoto(p.url, filename), i * 500);
-    const a = document.createElement('a');
-    a.href = p.url;
-    a.download = filename;
-    a.textContent = `Save ${p.type} ${i+1}`;
-    a.className = 'download-btn';
-    gallery.parentNode.appendChild(a);
+    const btn = document.createElement('button');
+    btn.textContent = `Save ${p.type === 'photo-group' ? 'Group' : 'Close-up'} ${i+1}`;
+    btn.className = 'download-btn';
+    btn.style.marginTop = '8px';
+    btn.onclick = async () => {
+      try {
+        const res = await fetch(p.url);
+        const blob = await res.blob();
+        const file = new File([blob], filename, { type: 'image/jpeg' });
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename });
+        } else {
+          const a = document.createElement('a');
+          a.href = p.url;
+          a.download = filename;
+          a.click();
+        }
+      } catch (e) {
+        const a = document.createElement('a');
+        a.href = p.url;
+        a.download = filename;
+        a.click();
+      }
+    };
+    gallery.parentNode.appendChild(btn);
   });
 
   const again = document.createElement('button');
