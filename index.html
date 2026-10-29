@@ -520,9 +520,21 @@ async function startVideoClip(faceIndex, mode, n) {
   }
 
   try {
-    const mime = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' :
-                 MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' :
-                 MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/mp4';
+    // Prefer MP4 (better on iPhone) — try several common Safari-compatible strings
+    const mp4Candidates = [
+      'video/mp4',
+      'video/mp4;codecs=avc1',
+      'video/mp4;codecs="avc1.42E01E"',
+      'video/mp4;codecs="avc1.4D401E"'
+    ];
+    let mime = null;
+    for (const c of mp4Candidates) {
+      if (MediaRecorder.isTypeSupported(c)) { mime = c; break; }
+    }
+    if (!mime) {
+      mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' :
+             MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/webm';
+    }
     const recorder = new MediaRecorder(recordStream, { mimeType: mime });
     const chunks = [];
     recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
