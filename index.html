@@ -291,7 +291,7 @@ function startCountdown(seconds, onDone) {
   }, 1000);
 }
 
-function beginSession(numGroup, totalDuration, minutes) {
+async function beginSession(numGroup, totalDuration, minutes) {
   trackedFaces = detectAllFaces();
   // Quick second pass if nothing found (helps with momentary motion/lighting)
   if (trackedFaces.length === 0) {
