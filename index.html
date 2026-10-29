@@ -293,7 +293,6 @@ function startCountdown(seconds, onDone) {
 
 async function beginSession(numGroup, totalDuration, minutes) {
   trackedFaces = detectAllFaces();
-  // Quick second pass if nothing found (helps with momentary motion/lighting)
   if (trackedFaces.length === 0) {
     await new Promise(r => setTimeout(r, 400));
     trackedFaces = detectAllFaces();
@@ -384,7 +383,6 @@ function detectAllFaces() {
   try {
     const vw = video.videoWidth;
     const vh = video.videoHeight;
-    // Use a larger detection canvas for better accuracy
     const tmp = document.createElement('canvas');
     tmp.width = Math.min(vw, 800);
     tmp.height = Math.round(tmp.width * (vh / vw));
@@ -394,12 +392,10 @@ function detectAllFaces() {
     const gray = rgba_to_grayscale(imageData.data, tmp.height, tmp.width);
     const image = { pixels: gray, nrows: tmp.height, ncols: tmp.width, ldim: tmp.width };
 
-    // More aggressive parameters for robustness
     const params = { shiftfactor: 0.08, minsize: 20, maxsize: 1000, scalefactor: 1.05 };
     let dets = pico.run_cascade(image, facefinder_classify_region, params);
     dets = pico.cluster_detections(dets, 0.15);
 
-    // Lower quality threshold so more faces are kept
     const qthresh = 3.0;
     const faces = [];
     for (const d of dets) {
@@ -534,15 +530,7 @@ async function startVideoClip(faceIndex, mode, n) {
       const blob = new Blob(chunks, { type: mime });
       const url = URL.createObjectURL(blob);
       videoClips.push({ url, type: `video-${mode}-p${faceIndex+1}`, mime });
-      statusEl.textContent = `Video ${n} saved`;
-      setTimeout(() => {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `video-${mode}-person${faceIndex+1}-${n}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }, 300);
+      statusEl.textContent = `Video ${n} recorded`;
     };
     recorder.start();
     setTimeout(() => {
@@ -553,16 +541,6 @@ async function startVideoClip(faceIndex, mode, n) {
     statusEl.textContent = 'Video recording failed';
     if (animId) cancelAnimationFrame(animId);
   }
-}
-
-function downloadPhoto(dataUrl, filename) {
-  const a = document.createElement('a');
-  a.href = dataUrl;
-  a.download = filename;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
 }
 
 function endSession() {
@@ -578,18 +556,17 @@ function endSession() {
   video.srcObject = null;
   startTimerBtn.style.display = 'none';
 
-  // Single Save All button for photos + videos
   const saveAllBtn = document.createElement('button');
-  saveAllBtn.textContent = 'Save All Photos & Videos';
+  saveAllBtn.textContent = 'Download All';
   saveAllBtn.className = 'download-btn';
   saveAllBtn.style.marginTop = '16px';
   saveAllBtn.style.fontSize = '1rem';
   saveAllBtn.style.padding = '16px';
+  saveAllBtn.style.background = 'linear-gradient(90deg, #22c55e 0%, #16a34a 100%)';
   saveAllBtn.onclick = async () => {
     saveAllBtn.disabled = true;
     saveAllBtn.textContent = 'Preparing…';
     const files = [];
-    // Photos
     for (let i = 0; i < photos.length; i++) {
       const p = photos[i];
       const filename = p.type + '-' + (i+1) + '.jpg';
@@ -599,7 +576,6 @@ function endSession() {
         files.push(new File([blob], filename, { type: 'image/jpeg' }));
       } catch (e) {}
     }
-    // Videos
     for (let i = 0; i < videoClips.length; i++) {
       const v = videoClips[i];
       const ext = (v.mime && v.mime.includes('mp4')) ? 'mp4' : 'webm';
@@ -619,18 +595,19 @@ function endSession() {
         await navigator.share({ files, title: 'Group Capture Session' });
         saveAllBtn.textContent = 'Shared';
       } else {
-        // Fallback: sequential downloads
         for (const file of files) {
           const a = document.createElement('a');
           a.href = URL.createObjectURL(file);
           a.download = file.name;
+          document.body.appendChild(a);
           a.click();
-          await new Promise(r => setTimeout(r, 400));
+          document.body.removeChild(a);
+          await new Promise(r => setTimeout(r, 500));
         }
         saveAllBtn.textContent = 'Downloaded';
       }
     } catch (e) {
-      saveAllBtn.textContent = 'Save All Photos & Videos';
+      saveAllBtn.textContent = 'Download All';
       saveAllBtn.disabled = false;
     }
   };
