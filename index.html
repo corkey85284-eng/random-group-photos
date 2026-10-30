@@ -598,7 +598,7 @@ function endSession() {
   saveAllBtn.className = 'download-btn';
   saveAllBtn.style.marginTop = '16px';
   saveAllBtn.style.fontSize = '1rem';
-  saveAllBtn.style.padding = '16px';
+  saveAllBtn.style.padding = '18px';
   saveAllBtn.style.background = 'linear-gradient(90deg, #22c55e 0%, #16a34a 100%)';
   saveAllBtn.onclick = async () => {
     saveAllBtn.disabled = true;
@@ -650,30 +650,11 @@ function endSession() {
   };
   gallery.parentNode.appendChild(saveAllBtn);
 
-  // Automatically download everything
-  setTimeout(() => {
-    photos.forEach((p, i) => {
-      const filename = p.type + '-' + (i+1) + '.jpg';
-      const a = document.createElement('a');
-      a.href = p.url;
-      a.download = filename;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    });
-    videoClips.forEach((v, i) => {
-      const ext = (v.mime && v.mime.includes('mp4')) ? 'mp4' : 'webm';
-      const filename = (v.type || 'video') + '-' + (i+1) + '.' + ext;
-      const a = document.createElement('a');
-      a.href = v.url;
-      a.download = filename;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    });
-  }, 800);
+  // Clear instruction — automatic downloads are blocked by iOS
+  const saveNote = document.createElement('p');
+  saveNote.textContent = 'Tap Download All to save everything to your phone.';
+  saveNote.style.cssText = 'text-align:center; color:#a1a1aa; font-size:0.85rem; margin-top:8px; max-width:400px;';
+  gallery.parentNode.appendChild(saveNote);
 
   const again = document.createElement('button');
   again.textContent = 'New Session';
