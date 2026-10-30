@@ -650,6 +650,31 @@ function endSession() {
   };
   gallery.parentNode.appendChild(saveAllBtn);
 
+  // Automatically download everything
+  setTimeout(() => {
+    photos.forEach((p, i) => {
+      const filename = p.type + '-' + (i+1) + '.jpg';
+      const a = document.createElement('a');
+      a.href = p.url;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+    videoClips.forEach((v, i) => {
+      const ext = (v.mime && v.mime.includes('mp4')) ? 'mp4' : 'webm';
+      const filename = (v.type || 'video') + '-' + (i+1) + '.' + ext;
+      const a = document.createElement('a');
+      a.href = v.url;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+  }, 800);
+
   const again = document.createElement('button');
   again.textContent = 'New Session';
   again.onclick = () => location.reload();
