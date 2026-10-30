@@ -196,6 +196,28 @@ video { width: 100%; display: block; }
   <input type="number" id="duration" min="1" max="30" value="3" step="0.5">
   <p class="note">3 group photos (start · mid · end). Per person: 3 close-up photos + 3 videos (2 close-up, 1 full-body), 10s each.</p>
   <button id="startBtn">Start Camera</button>
+  <button id="settingsBtn" style="margin-top:10px; background:rgba(30,20,50,0.6); border:1px solid rgba(255,255,255,0.15); box-shadow:none;">Settings</button>
+</div>
+
+<div class="card" id="settingsPanel" style="display:none;">
+  <h2 style="font-size:1.1rem; margin-bottom:12px;">Settings</h2>
+
+  <label for="videoLength">Video Length (seconds)</label>
+  <input type="number" id="videoLength" min="5" max="30" value="10" step="1">
+
+  <label for="maxPeople">Max People to Track</label>
+  <input type="number" id="maxPeople" min="1" max="10" value="4" step="1">
+  <p class="note" style="margin-top:4px;">Limits how many faces the app follows so it stays focused.</p>
+
+  <label for="savePref">Preferred Save Method</label>
+  <select id="savePref" style="width:100%; padding:14px; border-radius:14px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:#fff; font-size:1rem;">
+    <option value="share">Share Sheet (recommended on iPhone)</option>
+    <option value="downloads">Downloads folder</option>
+  </select>
+  <p class="note" style="margin-top:4px;">On iPhone the share sheet lets you choose Photos or Files. Downloads goes to the Files app.</p>
+
+  <button id="saveSettingsBtn" style="margin-top:16px;">Save Settings</button>
+  <button id="closeSettingsBtn" style="margin-top:8px; background:rgba(30,20,50,0.6); border:1px solid rgba(255,255,255,0.15); box-shadow:none;">Close</button>
 </div>
 
 <div id="video-container" style="display:none;">
@@ -225,6 +247,53 @@ let cascadeReady = false;
 let sessionParams = null;
 let trackedFaces = [];
 let videoClips = [];
+
+// Settings
+let settings = {
+  videoLength: 10,
+  maxPeople: 4,
+  savePref: 'share'
+};
+
+function loadSettings() {
+  try {
+    const saved = localStorage.getItem('groupCaptureSettings');
+    if (saved) settings = { ...settings, ...JSON.parse(saved) };
+  } catch (e) {}
+  document.getElementById('videoLength').value = settings.videoLength;
+  document.getElementById('maxPeople').value = settings.maxPeople;
+  document.getElementById('savePref').value = settings.savePref;
+  updateNote();
+}
+
+function saveSettings() {
+  settings.videoLength = Math.max(5, Math.min(30, parseInt(document.getElementById('videoLength').value) || 10));
+  settings.maxPeople = Math.max(1, Math.min(10, parseInt(document.getElementById('maxPeople').value) || 4));
+  settings.savePref = document.getElementById('savePref').value;
+  localStorage.setItem('groupCaptureSettings', JSON.stringify(settings));
+  updateNote();
+  document.getElementById('settingsPanel').style.display = 'none';
+  document.getElementById('setup').style.display = 'block';
+}
+
+function updateNote() {
+  const note = document.querySelector('#setup .note');
+  if (note) {
+    note.textContent = `3 group photos (start · mid · end). Per person: 3 close-up photos + 3 videos (2 close-up, 1 full-body), ${settings.videoLength}s each. Tracking up to ${settings.maxPeople} people.`;
+  }
+}
+
+document.getElementById('settingsBtn').addEventListener('click', () => {
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('settingsPanel').style.display = 'block';
+});
+document.getElementById('closeSettingsBtn').addEventListener('click', () => {
+  document.getElementById('settingsPanel').style.display = 'none';
+  document.getElementById('setup').style.display = 'block';
+});
+document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+
+loadSettings();
 
 async function loadCascade() {
   if (cascadeReady) return;
@@ -334,7 +403,7 @@ async function beginSession(numGroup, totalDuration, minutes) {
     }
     videoSlots.sort((a, b) => (a.faceIndex - b.faceIndex) || (a.mode === 'full' ? 1 : -1));
 
-    const videoDuration = 10000;
+    const videoDuration = settings.videoLength * 1000;
     const usable = Math.max(totalDuration - videoDuration - 2000, 10000);
     for (let i = 0; i < videoSlots.length; i++) {
       const t = ((i + 0.5) / videoSlots.length) * usable + 1000;
@@ -429,7 +498,7 @@ function detectAllFaces() {
     }
 
     unique.sort((a, b) => b.score - a.score);
-    return unique.slice(0, 10);
+    return unique.slice(0, settings.maxPeople || 4);
   } catch (e) {
     console.warn('pico detection error', e);
     return [];
@@ -572,7 +641,7 @@ async function startVideoClip(faceIndex, mode, n) {
     recorder.start();
     setTimeout(() => {
       if (recorder.state === 'recording') recorder.stop();
-    }, 10000);
+    }, settings.videoLength * 1000);
   } catch (e) {
     console.error('Video record failed', e);
     statusEl.textContent = 'Video recording failed';
@@ -628,7 +697,8 @@ function endSession() {
       return;
     }
     try {
-      if (navigator.share && navigator.canShare && navigator.canShare({ files })) {
+      const preferShare = settings.savePref === 'share';
+      if (preferShare && navigator.share && navigator.canShare && navigator.canShare({ files })) {
         await navigator.share({ files, title: 'Group Capture Session' });
         saveAllBtn.textContent = 'Shared';
       } else {
